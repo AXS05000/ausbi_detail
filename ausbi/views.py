@@ -1,27 +1,51 @@
 import os
 import time
-from .models import CentroCusto
-from .forms import MesAnoForm
+from selenium import webdriver
 from django.shortcuts import render
 from django.http import HttpResponse
-from selenium import webdriver
-
+from .forms import MesAnoForm
+from .models import CentroCusto
+from selenium.webdriver.common.by import By
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
 
 def configure_download_folder(download_folder):
-    # Opções para configurar o navegador Firefox
     firefox_options = webdriver.FirefoxOptions()
-    
-    # Configurar o diretório de download
     firefox_options.set_preference("browser.download.folderList", 2)
     firefox_options.set_preference("browser.download.manager.showWhenStarting", False)
     firefox_options.set_preference("browser.download.dir", download_folder)
     firefox_options.set_preference("browser.helperApps.neverAsk.saveToDisk", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-    
-    # Iniciar o navegador com as opções configuradas
     driver = webdriver.Firefox(options=firefox_options)
-    
     return driver
 
+
+
+
+
+
+def login(driver, usuario, senha):
+    driver.get("https://app.folhacerta.com/Admin/Login")
+    time.sleep(5)
+    
+    # Preenchendo o campo de usuário usando JavaScript
+    driver.execute_script(f"document.getElementsByName('login')[0].value = '{usuario}'")
+    
+    # Preenchendo o campo de senha
+    campo_senha = driver.find_element(By.NAME, "senha")
+    campo_senha.send_keys(senha)
+    
+    # Clicando no botão de login
+    botao_login = driver.find_element(By.XPATH, "//button[text()='Login']")
+    botao_login.click()
+    
+    time.sleep(5)
+    input("Pressione Enter após resolver o captcha manualmente...")
+
+
+
+
+    
 
 def baixar_planilhas(request):
     if request.method == 'POST':
@@ -30,45 +54,26 @@ def baixar_planilhas(request):
             ano = form.cleaned_data['ano']
             mes = form.cleaned_data['mes']
             centros_custo = CentroCusto.objects.all()
-
             os.makedirs('planilhas', exist_ok=True)
-
             download_folder = r"C:\Users\alexs\Downloads"
             driver = configure_download_folder(download_folder)
 
-            # Armazene o identificador da janela original
-            original_window = driver.current_window_handle
+            login(driver, "40997778806", "2241")
 
             for centro in centros_custo:
                 centro_custo_id = centro.centro_custo_id
                 baixou = False
                 tentativas = 0
 
-                while not baixou and tentativas < 3:  # tente baixar até 3 vezes
-                    # Use JavaScript para abrir uma nova aba
-                    driver.execute_script("window.open('about:blank', '_blank');")
-                    # Mude para a nova aba
-                    driver.switch_to.window(driver.window_handles[1])
-                    
+                while not baixou and tentativas < 3:
                     url = f"https://app.folhacerta.com/Admin/HorasTrabalhadasDiaExcel?ano={ano}&mes={mes}&centrocusto_id={centro_custo_id}&filtro=&usuario=99505"
-                    driver.get(url)  # Navegue até a URL usando Selenium.
-
+                    driver.get(url)
                     filename = os.path.join(download_folder, f"planilha_{ano}_{mes}_{centro_custo_id}.xlsx")
-
-                    # Aguarde até que o arquivo seja baixado.
-                    baixou = aguardar_download(filename, 300)  # Espera até 5 minutos. Ajuste conforme necessário.
-
+                    baixou = aguardar_download(filename, 300)
                     if not baixou:
-                        time.sleep(5)  # Aguarde 5 segundos antes de tentar novamente.
+                        time.sleep(5)
                     tentativas += 1
 
-                    # Feche a aba atual
-                    driver.close()
-
-                    # Volte para a aba original
-                    driver.switch_to.window(original_window)
-
-            # Finalmente, feche o navegador após o download de todos os arquivos.
             driver.quit()
             return HttpResponse("Planilhas baixadas com sucesso.")
 
@@ -79,9 +84,6 @@ def baixar_planilhas(request):
 
 
 def aguardar_download(filename, timeout):
-    """
-    Aguarde até que o arquivo seja baixado ou o tempo limite seja atingido.
-    """
     for _ in range(timeout):
         if os.path.exists(filename) and os.path.getsize(filename) > 0:
             return True
